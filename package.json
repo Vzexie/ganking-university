@@ -1,0 +1,20 @@
+{
+  "name": "ganking-university",
+  "version": "1.0.0",
+  "description": "Ganking University — fan-made Deepwoken guild portal (backend + frontend)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^9.0.1",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "pg": "^8.11.5"
+  }
+}
