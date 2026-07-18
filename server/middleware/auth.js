@@ -36,7 +36,7 @@ async function loadUser(req, res, next) {
     if (tier === 'admin') {
       ['can_assign_roles', 'can_approve_admissions', 'can_manage_classes', 'can_grade', 'can_write_blog',
         'can_review_blog', 'can_issue_detention', 'can_manage_board', 'can_manage_users', 'can_manage_units',
-        'can_manage_settings', 'can_create_roles'].forEach(p => { permissions[p] = true; });
+        'can_manage_settings', 'can_create_roles', 'can_delete_chat'].forEach(p => { permissions[p] = true; });
     }
 
     // units currently in use (enrolled classes * 3, computed on demand elsewhere), roles list for display
@@ -45,12 +45,19 @@ async function loadUser(req, res, next) {
       [user.id]
     );
 
+    // Real admission = being placed on the Reveal Board by an Admin/Admission Counselor,
+    // not just having an account. Being on the board grants full portal access even before
+    // the name is publicly "revealed" — reveal is a cosmetic ceremony step, not the gate itself.
+    const boardResult = await db.query('SELECT 1 FROM board_slots WHERE user_id = $1 LIMIT 1', [user.id]);
+    const onBoard = boardResult.rows.length > 0;
+
     req.currentUser = {
       ...user,
       roles: roles.map(r => r.name),
       tier,
       permissions,
-      unitsUsed: Number(enrolledUnitsResult.rows[0].used)
+      unitsUsed: Number(enrolledUnitsResult.rows[0].used),
+      onBoard
     };
     next();
   } catch (err) {
@@ -63,6 +70,19 @@ async function loadUser(req, res, next) {
 function requireAuth(req, res, next) {
   if (!req.currentUser) return res.status(401).json({ error: 'You must be logged in.' });
   if (req.currentUser.account_status !== 'active') return res.status(403).json({ error: 'Your account is not active yet.' });
+  next();
+}
+
+// Gate for the actual student portal (chat, gank log, bank, yearbook, schedule, gradebook).
+// Staff-tier and above always pass. Student-tier accounts only pass once an Admin or
+// Admission Counselor has placed their username on the Reveal Board — that placement,
+// not the earlier admission-request approval, is what "being admitted" actually means.
+function requirePortalAccess(req, res, next) {
+  if (!req.currentUser) return res.status(401).json({ error: 'You must be logged in.' });
+  if (req.currentUser.tier !== 'student') return next();
+  if (!req.currentUser.onBoard) {
+    return res.status(403).json({ error: 'Your admission is still pending. Full access unlocks once an Admin or Admission Counselor places your name on the Reveal Board.' });
+  }
   next();
 }
 
@@ -91,4 +111,4 @@ function blockIfDetained(req, res, next) {
   next();
 }
 
-module.exports = { loadUser, requireAuth, requirePermission, requireTier, blockIfDetained, TIER_RANK };
+module.exports = { loadUser, requireAuth, requirePermission, requireTier, blockIfDetained, requirePortalAccess, TIER_RANK };
