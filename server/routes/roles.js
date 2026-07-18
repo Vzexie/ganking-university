@@ -8,7 +8,8 @@ const router = express.Router();
 const ALLOWED_PERMISSIONS = [
   'can_assign_roles', 'can_approve_admissions', 'can_manage_classes', 'can_grade',
   'can_write_blog', 'can_review_blog', 'can_issue_detention', 'can_manage_board',
-  'can_manage_users', 'can_manage_units', 'can_manage_settings', 'can_create_roles'
+  'can_manage_users', 'can_manage_units', 'can_manage_settings', 'can_create_roles',
+  'can_delete_chat'
 ];
 const ALLOWED_TIERS = ['student', 'staff', 'admission_counselor', 'admin'];
 

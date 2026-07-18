@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, blockIfDetained } = require('../middleware/auth');
+const { requireAuth, blockIfDetained, requirePortalAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ function validKind(req, res, next) {
   next();
 }
 
-router.get('/:kind', requireAuth, validKind, async (req, res) => {
+router.get('/:kind', requireAuth, requirePortalAccess, validKind, async (req, res) => {
   const result = await db.query(
     `SELECT fp.*, u.username FROM feed_posts fp JOIN users u ON u.id = fp.user_id
      WHERE fp.kind = $1 ORDER BY fp.created_at DESC LIMIT 200`,
@@ -18,7 +18,7 @@ router.get('/:kind', requireAuth, validKind, async (req, res) => {
   res.json({ posts: result.rows });
 });
 
-router.post('/:kind', requireAuth, validKind, blockIfDetained, async (req, res) => {
+router.post('/:kind', requireAuth, requirePortalAccess, validKind, blockIfDetained, async (req, res) => {
   const { title, note, img } = req.body || {};
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
   if (img && img.length > 2_000_000) return res.status(400).json({ error: 'Image is too large.' });

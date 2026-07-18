@@ -1,10 +1,10 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requirePortalAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requirePortalAccess, async (req, res) => {
   const categories = await db.query('SELECT * FROM yearbook_categories ORDER BY id');
   const votes = await db.query('SELECT category_id, nominee, COUNT(*) AS count FROM yearbook_votes GROUP BY category_id, nominee');
   const myVotes = await db.query('SELECT category_id, nominee FROM yearbook_votes WHERE user_id = $1', [req.currentUser.id]);
@@ -23,7 +23,7 @@ router.get('/', requireAuth, async (req, res) => {
   res.json({ categories: result });
 });
 
-router.post('/:categoryId/vote', requireAuth, async (req, res) => {
+router.post('/:categoryId/vote', requireAuth, requirePortalAccess, async (req, res) => {
   const { nominee } = req.body || {};
   if (!nominee || !nominee.trim()) return res.status(400).json({ error: 'Nominee cannot be empty.' });
 

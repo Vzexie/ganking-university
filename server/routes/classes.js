@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requirePermission, requirePortalAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ async function classWithRoster(cls) {
   return { ...cls, roster: roster.rows };
 }
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requirePortalAccess, async (req, res) => {
   const result = await db.query('SELECT * FROM classes ORDER BY created_at DESC');
   const withRoster = await Promise.all(result.rows.map(classWithRoster));
   res.json({ classes: withRoster });
@@ -33,7 +33,7 @@ router.delete('/:id', requireAuth, requirePermission('can_manage_classes'), asyn
   res.json({ ok: true });
 });
 
-router.post('/:id/enroll', requireAuth, async (req, res) => {
+router.post('/:id/enroll', requireAuth, requirePortalAccess, async (req, res) => {
   const classResult = await db.query('SELECT * FROM classes WHERE id = $1', [req.params.id]);
   if (!classResult.rows.length) return res.status(404).json({ error: 'Class not found.' });
   const cls = classResult.rows[0];
@@ -54,7 +54,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/:id/drop', requireAuth, async (req, res) => {
+router.post('/:id/drop', requireAuth, requirePortalAccess, async (req, res) => {
   await db.query('DELETE FROM class_roster WHERE class_id = $1 AND user_id = $2', [req.params.id, req.currentUser.id]);
   res.json({ ok: true });
 });
@@ -75,7 +75,7 @@ router.post('/:id/grade', requireAuth, requirePermission('can_grade'), async (re
 });
 
 // The logged-in user's own units + classes summary.
-router.get('/mine/summary', requireAuth, async (req, res) => {
+router.get('/mine/summary', requireAuth, requirePortalAccess, async (req, res) => {
   const rosterResult = await db.query(
     `SELECT c.* FROM class_roster cr JOIN classes c ON c.id = cr.class_id WHERE cr.user_id = $1`,
     [req.currentUser.id]
