@@ -103,7 +103,7 @@ function nav() {
   `;
 
   const authArea = state.me
-    ? `<div class="nav-user"><span class="pill${state.me.detention_active ? ' warn' : ''}">${esc(state.me.username)} · ${esc((state.me.roles && state.me.roles[0]) || state.me.tier)}${state.me.detention_active ? ' · DETENTION' : ''}</span><button class="text-btn" onclick="logout()">Log out</button></div>`
+    ? `<div class="nav-user"><span class="pill${state.me.detention_active || needsBoardPlacement() ? ' warn' : ''}">${esc(state.me.username)} · ${esc((state.me.roles && state.me.roles[0]) || state.me.tier)}${state.me.detention_active ? ' · DETENTION' : ''}${needsBoardPlacement() ? ' · PENDING PLACEMENT' : ''}</span><button class="text-btn" onclick="logout()">Log out</button></div>`
     : `<button class="outline-button" onclick="openModal('auth')">Sign in / Apply</button>`;
 
   return `<header class="topbar">
@@ -126,6 +126,11 @@ function lockedPanel(label) {
 function forbiddenPanel(label) {
   return `<main class="dark-page">${nav()}<section class="view"><div class="locked-panel"><span class="eyebrow">RESTRICTED</span><h1 style="font:500 30px var(--display);margin:6px 0 14px">${esc(label)}</h1><p style="font:19px var(--serif);margin:0;color:#d7c6a6">Your current roles do not carry the authority to view this office.</p></div></section></main>`;
 }
+function pendingBoardPanel(label) {
+  return `<main class="dark-page">${nav()}<section class="view"><div class="locked-panel"><span class="eyebrow">ADMISSION PENDING</span><h1 style="font:500 30px var(--display);margin:6px 0 14px">${esc(label)}</h1><p style="font:19px var(--serif);margin:0 0 22px;color:#d7c6a6">Your account is active, but full access unlocks once an Admin or Admission Counselor places your name on the Reveal Board. Until then, you can still finish your application and check the Reveal Board.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="gold-button" onclick="go('board')">View Reveal Board</button><button class="outline-button" onclick="go('applications')" style="color:#5a452a;border-color:#5a452a">My Application</button></div></div></section></main>`;
+}
+// Gate: staff-tier and above always pass. Student-tier only passes once onBoard is true.
+function needsBoardPlacement() { return !!state.me && state.me.tier === 'student' && !state.me.onBoard; }
 
 /* ---------------------------------------------------------
    HOME
@@ -204,7 +209,7 @@ async function applications() {
     } else if (current.status === 'draft') {
       panel = `<aside class="form-card"><h2>Resume Application</h2><p style="font:18px var(--serif)">You have a saved draft. Pick up right where you left off.</p><button class="gold-button" style="width:100%" onclick="openModal('apply')">Continue Application</button></aside>`;
     } else {
-      panel = `<aside class="form-card"><h2>Application Submitted</h2><p style="font:18px var(--serif)">Your case is before the university now.</p><button class="gold-button" style="width:100%" onclick="showApp(${current.id})">View My Application</button></aside>`;
+      panel = `<aside class="form-card"><h2>Application Submitted</h2><p style="font:18px var(--serif)">Your case is before the university now.</p>${needsBoardPlacement() ? '<p class="hint">Note: your account is active, but chat, classes, and the rest of the student portal unlock once your name is placed on the Reveal Board.</p>' : ''}<button class="gold-button" style="width:100%" onclick="showApp(${current.id})">View My Application</button></aside>`;
     }
   }
 
@@ -250,12 +255,12 @@ async function board() {
   const data = await api('/api/board');
   const canManage = data.canManage;
   const slots = data.slots.map(x => `<button class="slot ${x.name ? '' : 'empty'} ${canManage ? 'admin' : ''} ${x.revealed ? 'revealed' : ''}" onclick="${canManage ? `openBoardEdit(${x.id})` : `revealSlot(${x.id})`}">
-    ${x.name ? (canManage ? `<span class="slot-name">${esc(x.name)}</span><small>${esc(x.guild || '')}</small>` : x.revealed ? `<span class="slot-name">${esc(x.name)}</span><small>Accepted</small>` : `<span class="seal-dot"></span><small>Reveal</small>`) : (canManage ? '<small>+ Assign candidate</small>' : '<small>—</small>')}
+    ${x.name ? (canManage ? `<span class="slot-name">${esc(x.name)}</span><small>${esc(x.guild || '')}${x.user_id ? ' · linked' : ' · unlinked'}</small>` : x.revealed ? `<span class="slot-name">${esc(x.name)}</span><small>Accepted</small>` : `<span class="seal-dot"></span><small>Reveal</small>`) : (canManage ? '<small>+ Assign candidate</small>' : '<small>—</small>')}
   </button>`).join('');
 
   return `<main class="dark-page">${nav()}
   <section class="view"><div class="board-shell">
-    <div class="page-heading"><div class="eyebrow">LATE SUMMER ADMISSIONS</div><h1>Reveal Board</h1><p>${canManage ? 'Board of Admissions view — click a slot to assign or edit a candidate.' : 'Thirty-plus places. One shared legacy.'}</p></div>
+    <div class="page-heading"><div class="eyebrow">LATE SUMMER ADMISSIONS</div><h1>Reveal Board</h1><p>${canManage ? 'Board of Admissions view — click a slot to assign or edit a candidate. Linking a slot to a real account is what actually grants that student full portal access.' : 'Thirty-plus places. One shared legacy.'}</p></div>
     <div class="board-panel"><div class="eyebrow">GANKING UNIVERSITY · CLASS OF 2026</div><div class="board-grid">${slots}</div>
       ${canManage ? `<button class="gold-button small" style="margin-top:20px" onclick="addSlot()">+ Add Slot</button>` : ''}
     </div>
@@ -268,8 +273,10 @@ async function board() {
    --------------------------------------------------------- */
 async function chatPage() {
   if (!state.me) return lockedPanel('The Common Hall');
+  if (needsBoardPlacement()) return pendingBoardPanel('The Common Hall');
   const data = await api('/api/chat');
-  const msgs = data.messages.slice().reverse().map(m => `<div class="chat-msg ${m.username === state.me.username ? 'mine' : ''}"><span class="who">${esc(m.username)} · ${fmtTime(m.created_at)}</span>${esc(m.body)}</div>`).join('') || '<p style="font:18px var(--serif);color:#a08a63">No messages yet — say hello to the university.</p>';
+  const canDelete = has('can_delete_chat');
+  const msgs = data.messages.slice().reverse().map(m => `<div class="chat-msg ${m.username === state.me.username ? 'mine' : ''}"><span class="who">${esc(m.username)} · ${fmtTime(m.created_at)}${canDelete ? ` <button class="chat-del-btn" title="Delete message" onclick="deleteChatMessage(${m.id})">Delete</button>` : ''}</span>${esc(m.body)}</div>`).join('') || '<p style="font:18px var(--serif);color:#a08a63">No messages yet — say hello to the university.</p>';
   const disabled = state.me.detention_active;
   return `<main class="dark-page">${nav()}
   <section class="view">
@@ -288,6 +295,7 @@ async function chatPage() {
 async function feedPage(kind) {
   const isBank = kind === 'bank';
   if (!state.me) return lockedPanel(isBank ? 'The Bank' : 'Gank Log');
+  if (needsBoardPlacement()) return pendingBoardPanel(isBank ? 'The Bank' : 'Gank Log');
   const data = await api(`/api/feed/${kind}`);
   const items = data.posts.slice().reverse().map(e => `<article class="feed-card">
       ${e.img ? `<img class="feed-thumb" src="${e.img}" alt="">` : ''}
@@ -319,6 +327,7 @@ async function feedPage(kind) {
    --------------------------------------------------------- */
 async function yearbookPage() {
   if (!state.me) return lockedPanel('Yearbook');
+  if (needsBoardPlacement()) return pendingBoardPanel('Yearbook');
   const data = await api('/api/yearbook');
   const cats = data.categories.map(c => {
     const isFixed = !!c.fixed_winner;
@@ -343,6 +352,7 @@ async function yearbookPage() {
    --------------------------------------------------------- */
 async function schedulePage() {
   if (!state.me) return lockedPanel('Office of the Registrar — Schedule');
+  if (needsBoardPlacement()) return pendingBoardPanel('Office of the Registrar — Schedule');
   const [classesData, summaryData] = await Promise.all([api('/api/classes'), api('/api/classes/mine/summary')]);
   const classes = classesData.classes;
   const myIds = new Set(summaryData.enrolled.map(c => c.id));
@@ -399,6 +409,7 @@ const GRADE_OPTIONS = ['—', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-',
 
 async function gradebookPage() {
   if (!state.me) return lockedPanel('Gradebook');
+  if (needsBoardPlacement()) return pendingBoardPanel('Gradebook');
 
   if (has('can_grade')) {
     const data = await api('/api/classes');
@@ -674,8 +685,13 @@ function modal() {
 
   if (state.modal === 'boardEdit') {
     const x = state.cache.boardSlot || {};
-    content = `<h2>Admissions Slot</h2>${err}<form onsubmit="saveSlot(event)">
-      <div class="field"><label>Accepted player name</label><input required name="name" value="${esc(x.name || '')}"></div>
+    const users = state.cache.assignableUsers || [];
+    const userOptions = users.map(u => `<option value="${u.id}" ${x.user_id === u.id ? 'selected' : ''} ${u.existing_slot_id && u.existing_slot_id !== x.id ? 'disabled' : ''}>${esc(u.username)}${u.existing_slot_id && u.existing_slot_id !== x.id ? ' (already placed)' : ''}</option>`).join('');
+    content = `<h2>Admissions Slot</h2>${err}
+      <p class="hint">Linking this slot to a real account is what admits them — it unlocks their chat, gank log, bank, yearbook, schedule, and gradebook access. A manual name with no linked account is just cosmetic.</p>
+      <form onsubmit="saveSlot(event)">
+      <div class="field"><label>Link to an account (grants access)</label><select name="user_id"><option value="">— none, manual entry only —</option>${userOptions}</select></div>
+      <div class="field"><label>Manual name (only used if no account is linked above)</label><input name="name" value="${esc(x.user_id ? '' : (x.name || ''))}"></div>
       <div class="field"><label>Guild</label><input name="guild" value="${esc(x.guild || '')}"></div>
       <div class="field"><label>Optional note</label><input name="note" value="${esc(x.note || '')}"></div>
       <button class="gold-button" style="width:100%">Save Candidate</button></form>
@@ -787,11 +803,13 @@ async function openBoardEdit(id) {
   const data = await api('/api/board');
   state.cache.boardSlot = data.slots.find(s => s.id === id) || {};
   state.cache.boardSlotId = id;
+  try { state.cache.assignableUsers = (await api('/api/board/assignable-users')).users; } catch (e) { state.cache.assignableUsers = []; }
   openModal('boardEdit');
 }
 async function saveSlot(e) {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));
+  if (d.user_id === '') delete d.user_id; else d.user_id = Number(d.user_id);
   try { await api(`/api/board/${state.cache.boardSlotId}/edit`, { method: 'POST', body: d }); state.modal = null; go('board'); } catch (err) { showError(err); }
 }
 async function clearSlot() {
@@ -808,6 +826,10 @@ async function postChat(e) {
   const body = input.value.trim();
   if (!body) return;
   try { await api('/api/chat', { method: 'POST', body: { body } }); render(); } catch (err) { showError(err); }
+}
+async function deleteChatMessage(id) {
+  if (!confirm('Delete this message?')) return;
+  try { await api(`/api/chat/${id}`, { method: 'DELETE' }); render(); } catch (err) { showError(err); }
 }
 
 /* ---------------------------------------------------------
